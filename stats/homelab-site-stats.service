@@ -1,0 +1,8 @@
+[Unit]
+Description=Build the website's stats.json and push it into the web container
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/homelab-site-stats
+TimeoutStartSec=300
+Nice=10

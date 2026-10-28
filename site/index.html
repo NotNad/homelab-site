@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dan's Homelab</title>
+<meta name="description" content="A tour of my homelab: a segmented network, a Proxmox host sharing one RTX 3090 across five workloads, ZFS storage, nightly backups and a hardened self-hosted AI agent.">
+<meta property="og:title" content="Dan's Homelab">
+<meta property="og:description" content="Segmented network, Proxmox virtualisation, shared-GPU AI and media, ZFS storage and a hardened self-hosted AI agent.">
+<meta property="og:type" content="website">
+<style>
+:root {
+  --bg: #f6f7f9; --surface: #ffffff; --surface-2: #eef1f5; --text: #14181f; --muted: #5b6573;
+  --border: #d9dee6; --accent: #2563eb; --accent-soft: #dbe6fd;
+  --z-trusted: #16a34a; --z-server: #2563eb; --z-dmz: #ea580c; --z-iot: #9333ea;
+ --z-guest: #64748b; --z-edge: #0f766e;
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 4px 14px rgba(16,24,40,.06);
+  --mono: ui-monospace, SFMono-Regular, "Cascadia Code", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1117; --surface: #151b23; --surface-2: #1d2530; --text: #e6edf3; --muted: #9aa6b4;
+    --border: #2a3441; --accent: #60a5fa; --accent-soft: #1e3a5f;
+    --z-trusted: #4ade80; --z-server: #60a5fa; --z-dmz: #fb923c; --z-iot: #c084fc;
+ --z-guest: #94a3b8; --z-edge: #2dd4bf;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1117; --surface: #151b23; --surface-2: #1d2530; --text: #e6edf3; --muted: #9aa6b4;
+  --border: #2a3441; --accent: #60a5fa; --accent-soft: #1e3a5f;
+  --z-trusted: #4ade80; --z-server: #60a5fa; --z-dmz: #fb923c; --z-iot: #c084fc;
+ --z-guest: #94a3b8; --z-edge: #2dd4bf;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 var(--sans); }
+a { color: var(--accent); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+header.top .wrap { display: flex; align-items: center; gap: 16px; height: 56px; }
+.brand { font-weight: 700; font-family: var(--mono); text-decoration: none; color: var(--text); white-space: nowrap; }
+.brand span { color: var(--accent); }
+nav.links { display: flex; gap: 18px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+nav.links a { color: var(--muted); text-decoration: none; font-size: 14px; white-space: nowrap; }
+nav.links a:hover { color: var(--text); }
+.theme-btn { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 8px; width: 34px; height: 34px; cursor: pointer; flex: none; }
+section { padding: 56px 0; }
+h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.15; margin: 0 0 16px; letter-spacing: -0.02em; }
+h2 { font-size: clamp(24px, 3.4vw, 32px); margin: 0 0 8px; letter-spacing: -0.01em; }
+h3 { margin: 0 0 6px; font-size: 18px; }
+.lede { color: var(--muted); font-size: 18px; max-width: 720px; margin: 0 0 24px; }
+.kicker { font-family: var(--mono); font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+.sub { color: var(--muted); margin: 0 0 28px; max-width: 760px; }
+
+/* hero */
+.hero { padding-top: 64px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 32px; }
+.stat { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); }
+.stat b { display: block; font-size: 26px; font-family: var(--mono); }
+.stat span { color: var(--muted); font-size: 14px; }
+.tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tag { font-family: var(--mono); font-size: 12.5px; padding: 3px 9px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--muted); }
+
+/* live */
+.live { padding-top: 8px; }
+.live-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px; }
+.live .stats { margin-top: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 560px) { .live .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.live .stat small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.live .stat.pending b { color: var(--muted); font-size: 18px; }
+.updated { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.updated.stale { color: var(--z-dmz); }
+.live-note { color: var(--muted); font-size: 13.5px; margin: 14px 0 0; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--z-trusted); margin-right: 8px; vertical-align: 1px; box-shadow: 0 0 0 0 color-mix(in srgb, var(--z-trusted) 60%, transparent); animation: pulse 2.4s infinite; }
+.live.stale .dot { background: var(--z-dmz); animation: none; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--z-trusted) 55%, transparent); } 70% { box-shadow: 0 0 0 8px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* diagram */
+.diagram { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
+.layers { display: flex; flex-direction: column; gap: 0; }
+.layer-label { font-family: var(--mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 8px; }
+.layer { position: relative; padding-bottom: 28px; }
+.layer:not(:last-child)::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 2px; height: 20px; background: var(--border); }
+.row { display: grid; gap: 10px; }
+.row.edge { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.row.zones { grid-template-columns: repeat(5, minmax(0,1fr)); }
+.row.hosts { grid-template-columns: 2fr 1fr; }
+.node { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--c, var(--accent)); border-radius: 10px; padding: 10px 12px; cursor: pointer; box-shadow: var(--shadow); transition: transform .12s, border-color .12s, background .12s; min-width: 0; }
+.node:hover { transform: translateY(-1px); }
+.node:focus-visible, .chip:focus-visible, .filter:focus-visible, .proj summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.node[aria-pressed="true"] { background: color-mix(in srgb, var(--c) 12%, var(--surface)); border-color: var(--c); }
+.node .t { font-weight: 650; font-size: 14.5px; display: block; overflow-wrap: anywhere; }
+.node .d { color: var(--muted); font-size: 12.5px; display: block; }
+.host { cursor: default; }
+.host-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.host-head button { all: unset; cursor: pointer; font-weight: 650; }
+.host-head button:hover { text-decoration: underline; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.chip { font: 12.5px var(--sans); color: var(--text); background: color-mix(in srgb, var(--c) 14%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c) 45%, var(--border)); border-radius: 6px; padding: 3px 8px; cursor: pointer; transition: opacity .15s; }
+.chip.dim { opacity: .28; }
+.chip .gpu { font-family: var(--mono); font-size: 10px; margin-left: 4px; color: var(--muted); }
+.side { position: sticky; top: 76px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px; box-shadow: var(--shadow); min-height: 260px; }
+.side .badge { display: inline-block; font-family: var(--mono); font-size: 11.5px; padding: 2px 8px; border-radius: 999px; color: #fff; background: var(--c, var(--accent)); margin-bottom: 8px; }
+.side ul { padding-left: 18px; margin: 10px 0 0; }
+.side li { margin: 4px 0; font-size: 14.5px; }
+.side p { margin: 6px 0; font-size: 14.5px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--c); margin-right: 5px; vertical-align: -1px; }
+
+/* catalog */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.filter { font: 14px var(--sans); padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; }
+.filter[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+.search { font: 14px var(--sans); padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); min-width: 0; flex: 1 1 180px; max-width: 260px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 8px; }
+.card h3 { font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.card p { margin: 0; color: var(--muted); font-size: 14.5px; flex: 1; }
+.card .meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.zpill { font-family: var(--mono); font-size: 11.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--c) 50%, var(--border)); color: var(--c); }
+.empty { color: var(--muted); padding: 20px 0; }
+
+/* projects */
+.projects { display: grid; gap: 12px; }
+.proj { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+.proj summary { list-style: none; cursor: pointer; padding: 18px 20px; display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center; }
+.proj summary::-webkit-details-marker { display: none; }
+.proj summary .ttl { font-weight: 650; font-size: 17px; }
+.proj summary .hook { color: var(--muted); font-size: 14.5px; grid-column: 1; }
+.proj summary .chev { grid-row: 1 / span 2; grid-column: 2; font-family: var(--mono); color: var(--muted); transition: transform .2s; }
+.proj[open] summary .chev { transform: rotate(90deg); }
+.proj .body { padding: 0 20px 20px; border-top: 1px solid var(--border); }
+.proj .cols { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; margin-top: 16px; }
+.proj h4 { margin: 0 0 6px; font-size: 13px; font-family: var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+.proj .cols p, .proj .cols li { font-size: 14.5px; margin: 0 0 6px; }
+.proj ul { padding-left: 18px; margin: 0; }
+.numbers { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.num { background: var(--surface-2); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--muted); }
+.num b { font-family: var(--mono); color: var(--text); font-size: 16px; display: block; }
+.proj .tags { margin-top: 14px; }
+
+/* hardware */
+.hw { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.hw .card dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 14px; }
+.hw dt { color: var(--muted); }
+.hw dd { margin: 0; }
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.principles .card p { flex: none; }
+
+footer { border-top: 1px solid var(--border); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+
+@media (max-width: 920px) {
+  .diagram { grid-template-columns: 1fr; }
+  .side { position: static; min-height: 0; }
+  .row.zones { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .proj .cols { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  nav.links { display: none; }
+  .row.edge { grid-template-columns: 1fr; }
+  .row.zones { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .row.hosts { grid-template-columns: 1fr; }
+  .layer:not(:last-child)::after { display: none; }
+  section { padding: 40px 0; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#top">dan<span>@</span>homelab</a>
+    <nav class="links" aria-label="Sections">
+      <a href="#live">Live</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#services">Services</a>
+      <a href="#projects">Projects</a>
+      <a href="#hardware">Hardware</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle dark mode" title="Toggle theme">◐</button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div class="kicker">Self-hosted, built and run at home</div>
+      <h1>My homelab: a small data centre at home</h1>
+      <p class="lede">A segmented network, one hypervisor running twenty containers, a single RTX&nbsp;3090 shared by AI, media and game streaming, ZFS storage with nightly backups, and a self-hosted AI agent I locked down to least privilege. This page is served from the lab itself.</p>
+      <div class="tags">
+        <span class="tag">Proxmox VE</span><span class="tag">LXC / KVM</span><span class="tag">TrueNAS SCALE · ZFS</span><span class="tag">Proxmox Backup Server</span><span class="tag">VLANs · Firewalls · IPS</span><span class="tag">Cloudflare Tunnel</span><span class="tag">Docker</span><span class="tag">NVIDIA / CUDA</span><span class="tag">Ollama · local LLMs</span><span class="tag">systemd</span><span class="tag">Bash · Python</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b>20 + 2</b><span>containers + VMs</span></div>
+        <div class="stat"><b>5</b><span>network zones (VLANs)</span></div>
+        <div class="stat"><b>1 GPU</b><span>shared by 5 workloads</span></div>
+        <div class="stat"><b>27 TB</b><span>raw ZFS storage</span></div>
+        <div class="stat"><b>~100 tok/s</b><span>local 27B LLM</span></div>
+        <div class="stat"><b>02:00</b><span>nightly backup, every guest</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="live" class="live" hidden>
+    <div class="wrap">
+      <div class="live-head">
+        <div>
+          <div class="kicker"><span class="dot" aria-hidden="true"></span>Lab right now</div>
+          <h2>Live from the rack</h2>
+        </div>
+        <span class="updated" id="liveUpdated"></span>
+      </div>
+      <div class="stats" id="liveStats"></div>
+      <p class="live-note">Hourly, aggregate numbers, pushed to this page from the hypervisor. The web server never talks to the rest of the lab.</p>
+    </div>
+  </section>
+
+  <section id="architecture">
+    <div class="wrap">
+      <div class="kicker">Architecture</div>
+      <h2>How it fits together</h2>
+      <p class="sub">Click any box. Picking a network zone highlights the services that live in it.</p>
+      <div class="diagram">
+        <div class="layers" id="layers"></div>
+        <aside class="side" id="side" aria-live="polite"></aside>
+      </div>
+      <div class="legend" id="legend"></div>
+    </div>
+  </section>
+
+  <section id="services">
+    <div class="wrap">
+      <div class="kicker">Service catalog</div>
+      <h2>What runs here</h2>
+      <p class="sub">Everything below is self-hosted. Filter by category or search.</p>
+      <div class="filters" id="filters"></div>
+      <div class="grid" id="grid"></div>
+    </div>
+  </section>
+
+  <section id="projects">
+    <div class="wrap">
+      <div class="kicker">Projects</div>
+      <h2>Problems I solved</h2>
+      <p class="sub">The interesting part of a homelab is what breaks. Each write-up covers the problem, what I did, and what I measured.</p>
+      <div class="projects" id="projList"></div>
+    </div>
+  </section>
+
+  <section id="hardware">
+    <div class="wrap">
+      <div class="kicker">Hardware</div>
+      <h2>The metal</h2>
+      <p class="sub">Consumer and prosumer parts, chosen for density and power draw rather than rack-mount looks.</p>
+      <div class="hw">
+        <div class="card"><h3>Hypervisor</h3><dl>
+          <dt>OS</dt><dd>Proxmox VE</dd>
+          <dt>CPU</dt><dd>Ryzen 9 5950X, 16c / 32t</dd>
+          <dt>RAM</dt><dd>64 GB DDR4</dd>
+          <dt>GPU</dt><dd>RTX 3090, 24 GB</dd>
+          <dt>Disks</dt><dd>1 TB + 500 GB NVMe (LVM-thin), mirrored SSD boot</dd>
+        </dl></div>
+        <div class="card"><h3>Storage</h3><dl>
+          <dt>OS</dt><dd>TrueNAS SCALE</dd>
+          <dt>Pool</dt><dd>ZFS, about 27 TB raw</dd>
+          <dt>Shares</dt><dd>NFS to the hypervisor, SMB to clients</dd>
+        </dl></div>
+        <div class="card"><h3>Network</h3><dl>
+          <dt>Gateway</dt><dd>UniFi gateway: zone-based firewall with IPS</dd>
+          <dt>Zones</dt><dd>5 VLANs, by trust level</dd>
+          <dt>Remote</dt><dd>VPN, plus an outbound-only tunnel for public apps</dd>
+          <dt>IPv6</dt><dd>Private addressing inside</dd>
+        </dl></div>
+      </div>
+
+      <div style="height:36px"></div>
+      <div class="kicker">How I run it</div>
+      <h2>Principles</h2>
+      <div class="principles" style="margin-top:16px">
+        <div class="card"><h3>Segment by trust</h3><p>Personal devices, servers, internet-facing apps, IoT and guests each get their own zone. Lower-trust zones cannot start connections into higher ones.</p></div>
+        <div class="card"><h3>Least privilege, including for AI</h3><p>Automation gets exactly the access its job needs, through allow-listed, logged entry points, with full access only in a short break-glass window.</p></div>
+        <div class="card"><h3>Back up before you touch it</h3><p>Every guest is backed up nightly and verified weekly. Updates run after backups, and risky changes take a snapshot first with automatic rollback.</p></div>
+        <div class="card"><h3>Measure, then change</h3><p>Every tuning decision on this page comes from a benchmark or a packet capture, not a forum post.</p></div>
+        <div class="card"><h3>Write it down</h3><p>The lab has a living reference of every service, rule and past incident. It is what both I and the AI agent read before making a change.</p></div>
+        <div class="card"><h3>Expose as little as possible</h3><p>Internet-facing apps live in an isolated DMZ, and web apps are published through an outbound-only tunnel rather than open ports.</p></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Built and hosted by Dan, on the hardware described above.</span>
+    <span><a id="linkedin" href="https://www.linkedin.com/in/danvton/" rel="noopener me">Connect with me on LinkedIn</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  /* ---------- theme ---------- */
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("theme"); if (saved) root.setAttribute("data-theme", saved); } catch (e) {}
+  document.getElementById("themeBtn").addEventListener("click", function () {
+    var cur = root.getAttribute("data-theme") ||
+      (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var next = cur === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("theme", next); } catch (e) {}
+  });
+
+  /* ---------- live stats ---------- */
+  function loadLive() {
+    if (!window.fetch || location.protocol === "file:") return;
+    fetch("stats.json", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(renderLive).catch(function () { /* keep the section hidden */ });
+  }
+  function fmtDate(iso) {
+    if (!iso) return null;
+    var d = new Date(iso + "T12:00:00");
+    var days = Math.round((Date.now() - d.getTime()) / 86400000);
+    if (days <= 0) return "Today";
+    if (days === 1) return "Yesterday";
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  function ago(ms) {
+    var m = Math.max(0, Math.round(ms / 60000));
+    if (m < 1) return "just now";
+    if (m < 60) return m + " min ago";
+    var h = Math.round(m / 60);
+    return h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago";
+  }
+  function renderLive(s) {
+    var tiles = [];
+    function tile(value, label, note, pending) {
+      tiles.push('<div class="stat' + (pending ? " pending" : "") + '"><b>' + esc(value) + "</b><span>" + esc(label) + "</span>" +
+        (note ? "<small>" + esc(note) + "</small>" : "") + "</div>");
+    }
+    var u = s.uptime;
+    if (u && typeof u.pct === "number") {
+      tile(u.pct.toFixed(2) + "%", "service uptime", (u.days >= 30 ? "last 30 days" : "last " + u.days + " day" + (u.days > 1 ? "s" : "")) + ", " + u.monitors + " checks");
+    } else {
+      tile("Collecting", "service uptime", "30-day history starts now", true);
+    }
+    if (s.guests) tile(s.guests.running + " / " + s.guests.total, "guests running", "containers and VMs");
+    if (s.backups) tile(s.backups.streak + " nights", "backups in a row", "last: " + (s.backups.last_ok ? "OK, " : "failed, ") + fmtDate(s.backups.last_date));
+    if (s.media) tile(s.media.library_tb.toFixed(1) + " TB", "media library", "on ZFS");
+    if (s.llm) tile(String(s.llm.requests_7d), "local LLM requests", "last 7 days, no cloud");
+    if (s.patched && s.patched.last_date) tile(fmtDate(s.patched.last_date), "last security patch", "installed automatically");
+    if (!tiles.length) return;
+    document.getElementById("liveStats").innerHTML = tiles.join("");
+    var upd = document.getElementById("liveUpdated");
+    var live = document.getElementById("live");
+    var t = new Date(String(s.updated).replace(/([+-]\d\d)(\d\d)$/, "$1:$2")).getTime();
+    if (!isNaN(t)) {
+      var stale = Date.now() - t > 3 * 3600000;
+      upd.textContent = "updated " + ago(Date.now() - t);
+      upd.classList.toggle("stale", stale);
+      live.classList.toggle("stale", stale);
+    }
+    live.hidden = false;
+  }
+  loadLive();
+
+  /* ---------- data ---------- */
+  var ZONES = {
+    trusted: { name: "Trusted", color: "--z-trusted" },
+    server:  { name: "Server",  color: "--z-server" },
+    dmz:     { name: "DMZ",     color: "--z-dmz" },
+    iot:     { name: "IoT",     color: "--z-iot" },
+    guest:   { name: "Guest",   color: "--z-guest" },
+    edge:    { name: "Edge",    color: "--z-edge" },
+    mixed:   { name: "Several zones", color: "--muted" },
+    internal: { name: "Internal", color: "--muted" }
+  };
+
+  var SERVICES = [
+    { id: "media", name: "Media servers", cat: "Media", zone: "mixed", gpu: true, where: "pve",
+      desc: "Two media servers on one library, with hardware video transcoding on the shared GPU." },
+    { id: "library", name: "Library automation", cat: "Media", zone: "server", where: "pve",
+      desc: "Small single-purpose services that organise the library, match metadata and subtitles, and take requests." },
+    { id: "makemkv", name: "Disc-import pipeline", cat: "Media", zone: "server", where: "nas",
+      desc: "Rips my own Blu-rays and DVDs, works out titles and episodes, and files them in the library. The AI agent proposes, I approve each disc." },
+    { id: "llm", name: "Ollama (local LLM)", cat: "AI", zone: "server", gpu: true, where: "pve",
+      desc: "Serves Qwen 27B with a 64K context at roughly 100 tokens/s on the RTX 3090. An 8-bit KV cache and flash attention keep the whole model in VRAM, and speculative decoding with the model's own draft head roughly doubles speed. No chat data leaves the house." },
+    { id: "agent", name: "Hermes Agent", cat: "AI", zone: "server", where: "pve", vm: true,
+      desc: "A self-hosted AI agent, running on the local Ollama model, that I message from Discord. It reads the lab's docs, checks health and runs approved jobs, inside a sandbox with least-privilege access." },
+    { id: "gaming", name: "Steam Headless", cat: "Gaming", zone: "internal", gpu: true, where: "pve",
+      desc: "A gaming PC with no screen: Steam runs in a container on the shared GPU and streams with Sunshine and Moonlight at 60 FPS, with a virtual DualSense controller." },
+    { id: "dns", name: "Network-wide DNS", cat: "Infrastructure", zone: "server", where: "pve",
+      desc: "DNS with ad and tracker blocking, encrypted upstream, and a synced replica so name resolution survives a reboot." },
+    { id: "proxy", name: "Nginx Proxy Manager", cat: "Infrastructure", zone: "server", where: "pve",
+      desc: "Reverse proxy that gives internal apps proper hostnames and TLS certificates." },
+    { id: "cloudflared", name: "Cloudflare Tunnel", cat: "Infrastructure", zone: "dmz", where: "pve",
+      desc: "Outbound-only tunnel that publishes chosen web apps, including this site, without opening a port." },
+    { id: "remote", name: "Private remote access", cat: "Infrastructure", zone: "server", where: "pve",
+      desc: "Lets my own devices reach the lab from anywhere, without exposing it." },
+    { id: "dash", name: "Dashboards", cat: "Infrastructure", zone: "server", where: "pve",
+      desc: "Live status of every service, including custom tiles that show pending updates." },
+    { id: "site", name: "This website", cat: "Infrastructure", zone: "dmz", where: "pve",
+      desc: "A static site in a minimal nginx container in the DMZ, published through the tunnel." },
+    { id: "nas", name: "TrueNAS SCALE", cat: "Storage & backup", zone: "server", where: "nas",
+      desc: "ZFS storage for media and backups, with scheduled snapshots, scrubs and alerts." },
+    { id: "pbs", name: "Proxmox Backup Server", cat: "Storage & backup", zone: "server",
+      desc: "Deduplicated nightly backups of every guest, pruned 7 daily / 4 weekly / 3 monthly and verified every week." },
+    { id: "updates", name: "Update pipeline", cat: "Storage & backup", zone: "server", where: "pve",
+      desc: "Security updates install automatically after the nightly backup. Bigger updates run through a pipeline that snapshots first and rolls back if a health check fails." }
+  ];
+
+  var EDGE = [
+    { id: "internet", name: "Internet", d: "Fibre uplink", zone: "edge",
+      title: "Internet", body: "The lab's single link to the outside world.",
+      points: ["IPv6 stays private (ULA) inside the network by design", "Inbound connections are denied unless a rule allows them"] },
+    { id: "gateway", name: "UniFi gateway", d: "Firewall · IPS · VPN", zone: "edge",
+      title: "Gateway", body: "Routes between zones and is the only place a packet can cross from one zone to another.",
+      points: ["Zone-based firewall, audited rule by rule against the live tables", "Intrusion prevention (IPS) on", "VPN for remote access"] },
+    { id: "tunnel", name: "Cloudflare Tunnel", d: "Outbound-only publishing", zone: "edge", svc: "cloudflared",
+      title: "Cloudflare Tunnel", body: "A connector in the DMZ dials out to Cloudflare, which serves chosen web apps (like this page) under my domain.",
+      points: ["No inbound port is opened for web apps", "TLS terminates at Cloudflare's edge", "The connector can reach only what it is allowed to"] }
+  ];
+
+  var ZONE_INFO = {
+    trusted: { body: "My own laptops, phones and desktop.", points: ["The highest-trust zone: lower-trust zones cannot start connections into it"] },
+    server:  { body: "The hypervisor, the NAS and internal apps.", points: ["Internal only: nothing here is reachable from the internet", "Each guest has a fixed address and does not accept router-advertised routes"] },
+    dmz:     { body: "Only things the internet talks to.", points: ["Just the apps that need to face the internet, such as this site", "If something here is compromised, it is boxed in"] },
+    iot:     { body: "Smart-home devices.", points: ["Kept apart from personal devices and servers"] },
+    guest:   { body: "Wi-Fi for visitors.", points: ["Client isolation: guests cannot see each other", "Internet only"] }
+  };
+
+  var HOSTS = [
+    { id: "pve", name: "Proxmox VE host", d: "20 containers + AI agent VM · RTX 3090", span: 1,
+      title: "Proxmox VE hypervisor", body: "Runs almost everything, as lightweight LXC containers plus one VM for the AI agent.",
+      points: ["One RTX 3090 passed through to five containers at once (AI, two media servers, gaming, vision)", "NVIDIA driver pinned to the same version on host and every GPU guest", "Containers with a second network leg never take a default route from it"] },
+    { id: "nas", name: "TrueNAS SCALE", d: "ZFS storage",
+      title: "TrueNAS SCALE", body: "The storage box. Media and downloads reach the hypervisor over NFS.",
+      points: ["ZFS with snapshots and scrubs", "Alerts go to a private Discord server, as do backup and update notices"] }
+  ];
+
+  var PROJECTS = [
+    { ttl: "One GPU, five workloads",
+      hook: "A 24 GB card shared by an LLM, two media servers, a game streamer and a vision app, without them stepping on each other.",
+      problem: ["The local LLM takes about 21 of 24 GB of VRAM while loaded.", "Start a game at the same time and the model spills onto the CPU (about 1 token/s) or the game stutters.", "All five containers need the exact same NVIDIA userspace as the host kernel module."],
+      did: ["Wrote a systemd watchdog that checks every 30 s for a running game (Steam's launcher process or a connected stream).", "On a game it pauses the AI agent and stops the LLM server; about 2 minutes after the game ends it brings both back.", "Pinned the driver on the host and in every guest, and documented the upgrade order, which ends with a reboot."],
+      result: ["Games get the whole card; the agent replies \"paused\" instead of hanging.", "No more out-of-memory failures on GPU jobs."],
+      nums: [["21 / 24 GB", "VRAM used by the LLM"], ["30 s", "check interval"], ["~2 min", "resume delay"]],
+      tags: ["systemd", "NVIDIA", "LXC", "Bash"] },
+    { ttl: "Locking down Hermes, my self-hosted AI agent",
+      hook: "An agent that can run commands is useful and dangerous. I gave it least privilege, then went looking for ways out.",
+      problem: ["The agent had started with broad access, and once built a container on its own.", "Commands it ran executed on its VM with full rights."],
+      did: ["Moved its terminal into a Docker sandbox with no capabilities.", "Put its hypervisor key behind a gate I wrote in Python: one allow-listed command per call, no shell, secrets redacted from output, every call logged. Full access only inside a time-boxed break-glass window I open.", "Made its gateway access read-only.", "Audited the host side and found a scheduled job that ran Python from a folder the sandbox could write, a sandbox escape by module shadowing. Moved that job into a throwaway container with the sandbox's own rights."],
+      result: ["Tested the gate with 101 allow and deny cases, then again from inside the sandbox.", "The agent still checks health, imports discs and runs updates, through named, logged actions."],
+      nums: [["101", "gate test cases"], ["0", "capabilities in the sandbox"], ["100%", "of calls logged"]],
+      tags: ["Security", "Python", "Docker", "SSH", "Threat modelling"] },
+    { ttl: "The game stream that fell apart after ten minutes",
+      hook: "Streaming games from the lab dropped about half its frames, but only after several minutes of play.",
+      problem: ["Moonlight showed heavy frame loss that started only after some minutes.", "The server was sending a steady 60 FPS, so the loss was on the path."],
+      did: ["Compared a routed path (between zones) with an unrouted one (same zone) using iperf3 and the gateway's own counters.", "Traced it to intrusion prevention dropping routed inter-zone video.", "Moved the streaming server onto the players' network segment, so the stream never crosses the router, and turned IPS back on everywhere."],
+      result: ["Smooth 60 FPS streams with IPS on.", "A rule of thumb for the lab: a service that is healthy on the box but times out from another zone, suspect IPS first."],
+      nums: [["~47%", "frame loss before"], ["0", "routed hops for the stream now"], ["60 FPS", "steady stream after the fix"]],
+      tags: ["Networking", "Firewalls", "IPS", "iperf3"] },
+    { ttl: "Benchmarking local LLM servers",
+      hook: "Ollama or vLLM? I built both on the same GPU and measured them through the agent's real workload.",
+      problem: ["The agent needs at least 64K tokens of context on a 24 GB card.", "With default settings the model spilled two layers onto the CPU and slowed to about 3 tokens/s."],
+      did: ["Built vLLM from source (including CUDA compiler fixes) next to Ollama, one loaded at a time.", "Ran three tasks, three runs each, through the agent itself.", "Tuned Ollama: 8-bit KV cache and flash attention to fit the context, speculative decoding with the model's own draft head, and a core-count sweep."],
+      result: ["Ollama won on raw generation and tied on tool use, so it stayed.", "vLLM was retired, with its build notes kept."],
+      nums: [["~3 → ~115", "tokens/s after KV-cache fix"], ["41 → 65-90", "tokens/s with speculative decoding"], ["+12%", "from 4 → 8 cores; 16 adds 1-3%"]],
+      tags: ["LLM", "CUDA", "Ollama", "vLLM", "Benchmarking"] },
+    { ttl: "Backups and hands-off updates",
+      hook: "Twenty-odd guests updated automatically, without waking up to a broken lab.",
+      problem: ["Many small containers, each with its own OS to patch.", "Updates that fail at night are worse than no updates."],
+      did: ["Nightly backups of every guest at 02:00 to a deduplicating backup server, plus the hypervisor's own config at 03:30.", "Pruning, garbage collection and a weekly verify of every backup.", "Security-only unattended upgrades on the host, backup server and every container, timed after the backups.", "An update pipeline for bigger upgrades: snapshot, update, health check, roll back on failure, report to Discord."],
+      result: ["Patched daily, restorable to any of the last seven days.", "Risky changes always have a known-good restore point behind them."],
+      nums: [["7 / 4 / 3", "daily / weekly / monthly kept"], ["weekly", "backup verification"], ["daily", "security patching"]],
+      tags: ["Proxmox Backup Server", "ZFS", "unattended-upgrades", "Automation"] }
+  ];
+
+  function cssVar(name) { return "var(" + name + ")"; }
+  function el(tag, attrs, html) {
+    var e = document.createElement(tag);
+    for (var k in attrs || {}) {
+      if (k === "style") e.setAttribute("style", attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    if (html != null) e.innerHTML = html;
+    return e;
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function svcById(id) { for (var i = 0; i < SERVICES.length; i++) if (SERVICES[i].id === id) return SERVICES[i]; }
+
+  /* ---------- diagram ---------- */
+  var layers = document.getElementById("layers");
+  var side = document.getElementById("side");
+  var allNodes = [];
+
+  function showDetail(o) {
+    side.style.setProperty("--c", cssVar(ZONES[o.zone || "edge"].color));
+    var h = '<span class="badge">' + esc(o.badge || ZONES[o.zone || "edge"].name) + '</span>';
+    h += "<h3>" + esc(o.title) + "</h3><p>" + esc(o.body) + "</p>";
+    if (o.points && o.points.length) h += "<ul>" + o.points.map(function (p) { return "<li>" + esc(p) + "</li>"; }).join("") + "</ul>";
+    side.innerHTML = h;
+  }
+  function select(btn, detail, zoneFilter) {
+    allNodes.forEach(function (n) { n.setAttribute("aria-pressed", n === btn ? "true" : "false"); });
+    document.querySelectorAll(".chip").forEach(function (c) {
+      c.classList.toggle("dim", !!zoneFilter && c.dataset.zone !== zoneFilter);
+    });
+    showDetail(detail);
+  }
+  function nodeBtn(o, zone) {
+    var b = el("button", { "class": "node", type: "button", "aria-pressed": "false", style: "--c:" + cssVar(ZONES[zone].color) },
+      '<span class="t">' + esc(o.name) + '</span><span class="d">' + esc(o.d) + "</span>");
+    allNodes.push(b);
+    return b;
+  }
+  function layer(label, rowClass) {
+    var L = el("div", { "class": "layer" });
+    L.appendChild(el("div", { "class": "layer-label" }, label));
+    var R = el("div", { "class": "row " + rowClass });
+    L.appendChild(R);
+    layers.appendChild(L);
+    return R;
+  }
+
+  var edgeRow = layer("Edge", "edge");
+  EDGE.forEach(function (o) {
+    var b = nodeBtn(o, "edge");
+    b.addEventListener("click", function () { select(b, o, o.svc ? "dmz" : null); });
+    edgeRow.appendChild(b);
+  });
+
+  var zoneRow = layer("Network zones", "zones");
+  ["trusted", "server", "dmz", "iot", "guest"].forEach(function (z) {
+    var count = SERVICES.filter(function (s) { return s.zone === z; }).length;
+    var info = ZONE_INFO[z];
+    var o = { name: ZONES[z].name, d: count ? count + " service" + (count > 1 ? "s" : "") : "devices only" };
+    var b = nodeBtn(o, z);
+    var detail = { zone: z, title: ZONES[z].name + " zone", body: info.body, points: info.points, badge: "Network zone" };
+    b.addEventListener("click", function () { select(b, detail, z); });
+    zoneRow.appendChild(b);
+  });
+
+  var hostRow = layer("Hosts", "hosts");
+  HOSTS.forEach(function (h) {
+    var box = el("div", { "class": "node host", style: "--c:var(--z-server)" });
+    var head = el("div", { "class": "host-head" });
+    var hb = el("button", { type: "button", "aria-pressed": "false" }, esc(h.name));
+    allNodes.push(hb);
+    var detail = { zone: "server", title: h.title, body: h.body, points: h.points, badge: "Host" };
+    hb.addEventListener("click", function () { select(hb, detail, null); });
+    head.appendChild(hb);
+    head.appendChild(el("span", { "class": "d" }, esc(h.d)));
+    box.appendChild(head);
+    var chips = el("div", { "class": "chips" });
+    SERVICES.filter(function (s) { return s.where === h.id; }).forEach(function (s) {
+      var c = el("button", { "class": "chip", type: "button", "data-zone": s.zone, style: "--c:" + cssVar(ZONES[s.zone].color) },
+        esc(s.name) + (s.gpu ? '<span class="gpu">GPU</span>' : "") + (s.vm ? '<span class="gpu">VM</span>' : ""));
+      c.addEventListener("click", function () {
+        select(null, { zone: s.zone, title: s.name, body: s.desc, badge: ZONES[s.zone].name + " · " + s.cat,
+          points: s.gpu ? ["Uses the shared RTX 3090"] : [] }, null);
+      });
+      chips.appendChild(c);
+    });
+    box.appendChild(chips);
+    hostRow.appendChild(box);
+  });
+
+  var legend = document.getElementById("legend");
+  ["trusted", "server", "dmz", "iot", "guest", "edge"].forEach(function (z) {
+    legend.appendChild(el("span", { style: "--c:" + cssVar(ZONES[z].color) }, "<i></i>" + ZONES[z].name));
+  });
+
+  showDetail({ zone: "edge", badge: "Start here", title: "A network built on trust zones",
+    body: "Traffic enters through the gateway, which decides what may cross between five zones. Below them, two hosts run the services.",
+    points: ["Click a zone to see what lives in it", "Click a service chip for what it does", "Coloured chips show each service's zone"] });
+
+  /* ---------- catalog ---------- */
+  var cats = ["All"];
+  SERVICES.forEach(function (s) { if (cats.indexOf(s.cat) < 0) cats.push(s.cat); });
+  var filters = document.getElementById("filters");
+  var grid = document.getElementById("grid");
+  var curCat = "All", curQ = "";
+  cats.forEach(function (c) {
+    var b = el("button", { "class": "filter", type: "button", "aria-pressed": c === "All" ? "true" : "false" }, esc(c));
+    b.addEventListener("click", function () {
+      curCat = c;
+      filters.querySelectorAll(".filter").forEach(function (f) { f.setAttribute("aria-pressed", f === b ? "true" : "false"); });
+      renderGrid();
+    });
+    filters.appendChild(b);
+  });
+  var search = el("input", { "class": "search", type: "search", placeholder: "Search services", "aria-label": "Search services" });
+  search.addEventListener("input", function () { curQ = search.value.toLowerCase(); renderGrid(); });
+  filters.appendChild(search);
+
+  function renderGrid() {
+    grid.innerHTML = "";
+    var list = SERVICES.filter(function (s) {
+      return (curCat === "All" || s.cat === curCat) &&
+        (!curQ || (s.name + " " + s.desc + " " + s.cat).toLowerCase().indexOf(curQ) >= 0);
+    });
+    if (!list.length) { grid.appendChild(el("div", { "class": "empty" }, "No services match.")); return; }
+    list.forEach(function (s) {
+      var z = ZONES[s.zone];
+      var meta = '<span class="zpill" style="--c:' + cssVar(z.color) + '">' + esc(z.name) + "</span>" +
+        '<span class="tag">' + esc(s.cat) + "</span>" + (s.gpu ? '<span class="tag">GPU</span>' : "") + (s.vm ? '<span class="tag">VM</span>' : "");
+      grid.appendChild(el("div", { "class": "card" }, "<h3>" + esc(s.name) + "</h3><p>" + esc(s.desc) + '</p><div class="meta">' + meta + "</div>"));
+    });
+  }
+  renderGrid();
+
+  /* ---------- projects ---------- */
+  var projList = document.getElementById("projList");
+  function ul(a) { return "<ul>" + a.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>"; }
+  PROJECTS.forEach(function (p, i) {
+    var d = el("details", { "class": "proj" });
+    if (i === 0) d.open = true;
+    d.innerHTML =
+      '<summary><span class="ttl">' + esc(p.ttl) + '</span><span class="chev">›</span><span class="hook">' + esc(p.hook) + "</span></summary>" +
+      '<div class="body"><div class="numbers">' +
+        p.nums.map(function (n) { return '<div class="num"><b>' + esc(n[0]) + "</b>" + esc(n[1]) + "</div>"; }).join("") +
+      '</div><div class="cols">' +
+        "<div><h4>Problem</h4>" + ul(p.problem) + "</div>" +
+        "<div><h4>What I did</h4>" + ul(p.did) + "</div>" +
+        "<div><h4>Result</h4>" + ul(p.result) + "</div>" +
+      '</div><div class="tags">' + p.tags.map(function (t) { return '<span class="tag">' + esc(t) + "</span>"; }).join("") + "</div></div>";
+    projList.appendChild(d);
+  });
+})();
+</script>
+</body>
+</html>

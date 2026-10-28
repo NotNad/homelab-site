@@ -1,0 +1,147 @@
+#!/usr/bin/python3 -I
+"""Build the website's stats.json and push it into the web container.
+
+Runs hourly on the Proxmox host (homelab-site-stats.timer). It publishes coarse,
+aggregate numbers only: no per-service status, versions, boot times or live
+GPU/game state, because those reveal patch level, outages or when someone is home.
+
+The web container never connects to anything: the file is copied in with `pct push`.
+
+Settings come from /etc/homelab-site-stats.conf (KEY=VALUE lines, see
+config.example.env); anything missing falls back to the defaults below.
+"""
+import json, os, subprocess, tempfile, time
+
+CONF = "/etc/homelab-site-stats.conf"
+DEFAULTS = {
+    "PVE_NODE": "pve",                  # Proxmox node name
+    "SITE_CT": "",                      # container that serves the site (required)
+    "SITE_ROOT": "/var/www/homelab",    # web root inside that container
+    "KUMA_CT": "",                      # Uptime Kuma container (optional)
+    "KUMA_DIR": "/opt/uptime-kuma",
+    "OLLAMA_CT": "",                    # Ollama container (optional)
+    "MEDIA_PATH": "",                   # mounted media share on the host (optional)
+    "OUT_DIR": "/var/lib/homelab-site-stats",
+}
+
+
+def load_conf():
+    cfg = dict(DEFAULTS)
+    try:
+        with open(CONF) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    cfg[k.strip()] = v.strip().strip('"')
+    except FileNotFoundError:
+        pass
+    return cfg
+
+
+C = load_conf()
+
+
+def run(cmd, timeout=60):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=True).stdout
+
+
+def safe(fn):
+    try:
+        return fn()
+    except Exception as e:  # one broken source must not stop the others
+        print(f"{fn.__name__}: {e}")
+        return None
+
+
+def guests():
+    rows = [l.split() for l in run(["pct", "list"]).splitlines()[1:]]
+    rows += [l.split() for l in run(["qm", "list"]).splitlines()[1:]]
+    running = sum(1 for r in rows if len(r) > 1 and r[1] == "running")
+    return {"running": running, "total": len(rows)}
+
+
+def backups():
+    tasks = json.loads(run(["pvesh", "get", f"/nodes/{C['PVE_NODE']}/tasks", "--typefilter", "vzdump",
+                            "--limit", "200", "--output-format", "json"]))
+    # Scheduled job runs cover all guests and have no guest id; one-off backups do.
+    nightly = sorted((t for t in tasks if not t.get("id") and "endtime" in t),
+                     key=lambda t: t["starttime"], reverse=True)
+    if not nightly:
+        return None
+    streak = 0
+    for t in nightly:
+        if t.get("status") != "OK":
+            break
+        streak += 1
+    last = nightly[0]
+    return {"last_ok": last.get("status") == "OK",
+            "last_date": time.strftime("%Y-%m-%d", time.localtime(last["starttime"])),
+            "streak": streak}
+
+
+def media():
+    if not C["MEDIA_PATH"]:
+        return None
+    st = os.statvfs(C["MEDIA_PATH"])
+    used = (st.f_blocks - st.f_bfree) * st.f_frsize
+    return {"library_tb": round(used / 1e12, 1)}
+
+
+def llm():
+    if not C["OLLAMA_CT"]:
+        return None
+    out = run(["pct", "exec", C["OLLAMA_CT"], "--", "journalctl", "-u", "ollama", "--since", "-7d", "-o", "cat"],
+              timeout=120)
+    chat = ('"/v1/chat/completions"', '"/api/chat"', '"/api/generate"')
+    n = sum(1 for l in out.splitlines() if "[GIN]" in l and "POST" in l and l.rstrip().endswith(chat))
+    return {"requests_7d": n}
+
+
+def patched():
+    last = None
+    with open("/var/log/unattended-upgrades/unattended-upgrades-dpkg.log") as f:
+        for line in f:
+            if line.startswith("Log started:"):
+                last = line.split()[2]
+    return {"last_date": last}
+
+
+def uptime():
+    if not C["KUMA_CT"]:
+        return None
+    out = run(["pct", "exec", C["KUMA_CT"], "--", "env", f"NODE_PATH={C['KUMA_DIR']}/node_modules",
+               f"KUMA_DB={C['KUMA_DIR']}/data/kuma.db", "node", "/usr/local/lib/site-stats/kuma-uptime.js"])
+    d = json.loads(out.strip().splitlines()[-1])
+    if "error" in d or not d.get("monitors") or not (d["up"] + d["down"]):
+        print(f"uptime: {d}")
+        return None
+    days = int((time.time() - d["first_day"]) // 86400) + 1
+    return {"pct": round(100 * d["up"] / (d["up"] + d["down"]), 2),
+            "days": min(days, 30), "monitors": d["monitors"]}
+
+
+def main():
+    stats = {
+        "updated": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "guests": safe(guests),
+        "backups": safe(backups),
+        "media": safe(media),
+        "llm": safe(llm),
+        "patched": safe(patched),
+        "uptime": safe(uptime),
+    }
+    out_dir = C["OUT_DIR"]
+    os.makedirs(out_dir, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=out_dir, suffix=".json")
+    with os.fdopen(fd, "w") as f:
+        json.dump(stats, f, separators=(",", ":"))
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, f"{out_dir}/stats.json")
+    if C["SITE_CT"] and "running" in run(["pct", "status", C["SITE_CT"]]):
+        run(["pct", "push", C["SITE_CT"], f"{out_dir}/stats.json", f"{C['SITE_ROOT']}/stats.json", "--perms", "644"])
+    print(json.dumps(stats))
+
+
+if __name__ == "__main__":
+    main()
