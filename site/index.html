@@ -290,6 +290,11 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
           <dt>Remote</dt><dd>VPN, plus an outbound-only tunnel for public apps</dd>
           <dt>IPv6</dt><dd>Private addressing inside</dd>
         </dl></div>
+        <div class="card"><h3>Power</h3><dl>
+          <dt>UPS</dt><dd>1500 VA line-interactive, pure sine wave</dd>
+          <dt>On battery</dt><dd>Hypervisor, NAS and core network</dd>
+          <dt>Shutdown</dt><dd>Automatic and ordered: hypervisor first, then NAS</dd>
+        </dl></div>
       </div>
 
       <div style="height:36px"></div>
@@ -419,6 +424,8 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
       desc: "Live status of every service, including custom tiles that show pending updates." },
     { id: "site", name: "This website", cat: "Infrastructure", zone: "dmz", where: "pve",
       desc: "A static site in a minimal nginx container in the DMZ, published through the tunnel." },
+    { id: "ups", name: "UPS shutdown orchestration", cat: "Infrastructure", zone: "server", where: "nas",
+      desc: "The NAS watches the UPS and the hypervisor follows it over the network, so on a power cut the lab shuts down in a safe order and comes back by itself when power returns." },
     { id: "nas", name: "TrueNAS SCALE", cat: "Storage & backup", zone: "server", where: "nas",
       desc: "ZFS storage for media and backups, with scheduled snapshots, scrubs and alerts." },
     { id: "pbs", name: "Proxmox Backup Server", cat: "Storage & backup", zone: "server",
@@ -453,7 +460,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
       points: ["One RTX 3090 passed through to five containers at once (AI, two media servers, gaming, vision)", "NVIDIA driver pinned to the same version on host and every GPU guest", "Containers with a second network leg never take a default route from it"] },
     { id: "nas", name: "TrueNAS SCALE", d: "ZFS storage",
       title: "TrueNAS SCALE", body: "The storage box. Media and downloads reach the hypervisor over NFS.",
-      points: ["ZFS with snapshots and scrubs", "Alerts go to a private Discord server, as do backup and update notices"] }
+      points: ["ZFS with snapshots and scrubs", "Alerts go to a private Discord server, as do backup and update notices", "Controls the UPS and shuts down last on a power cut"] }
   ];
 
   var PROJECTS = [
@@ -491,7 +498,14 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
       did: ["Nightly backups of every guest at 02:00 to a deduplicating backup server, plus the hypervisor's own config at 03:30.", "Pruning, garbage collection and a weekly verify of every backup.", "Security-only unattended upgrades on the host, backup server and every container, timed after the backups.", "An update pipeline for bigger upgrades: snapshot, update, health check, roll back on failure, report to Discord."],
       result: ["Patched daily, restorable to any of the last seven days.", "Risky changes always have a known-good restore point behind them."],
       nums: [["7 / 4 / 3", "daily / weekly / monthly kept"], ["weekly", "backup verification"], ["daily", "security patching"]],
-      tags: ["Proxmox Backup Server", "ZFS", "unattended-upgrades", "Automation"] }
+      tags: ["Proxmox Backup Server", "ZFS", "unattended-upgrades", "Automation"] },
+    { ttl: "A UPS that shuts things down in the right order",
+      hook: "A battery only helps if the lab is fully off before it runs out, and the order turned out to matter.",
+      problem: ["The media containers on the hypervisor mount their library from the NAS over NFS.", "A shutdown while the NAS was offline hung for nine minutes: processes waiting on NFS cannot be killed, so those containers could not stop until the NAS came back.", "The standard UPS setup only waits for clients to start shutting down, not to finish."],
+      did: ["Put the hypervisor, the NAS and the core network on battery, and everything else on surge protection only.", "Made the NAS the UPS controller (NUT) and the hypervisor a network client.", "Gave the hypervisor its own earlier trigger: after 60 s on battery it shuts down, while the NAS waits 5 minutes. An unprivileged hook signals a root-owned systemd unit, so the monitoring daemon never needs shutdown rights.", "Set both servers to power on when mains returns, and the UPS to cut and restore its outlets after a shutdown."],
+      result: ["The hypervisor is off with minutes to spare before the NAS goes.", "After an outage the lab comes back by itself, in the right order."],
+      nums: [["60 s", "hypervisor on battery"], ["5 min", "NAS on battery"], ["~30 s", "clean hypervisor shutdown"]],
+      tags: ["UPS", "NUT", "systemd", "NFS", "Linux"] }
   ];
 
   function cssVar(name) { return "var(" + name + ")"; }
