@@ -8,6 +8,13 @@
 <meta property="og:title" content="Dan's Homelab">
 <meta property="og:description" content="Segmented network, Proxmox virtualisation, shared-GPU AI and media, ZFS storage and a hardened self-hosted AI agent.">
 <meta property="og:type" content="website">
+<meta property="og:url" content="https://lab.hyperyder.com/">
+<meta property="og:image" content="https://lab.hyperyder.com/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="627">
+<meta property="og:image:alt" content="Dan's Homelab: segmented network, Proxmox, shared RTX 3090, ZFS storage, hardened AI agent">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="https://lab.hyperyder.com/">
 <style>
 :root {
   --bg: #f6f7f9; --surface: #ffffff; --surface-2: #eef1f5; --text: #14181f; --muted: #5b6573;
@@ -193,12 +200,12 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
     <div class="wrap">
       <div class="kicker">Self-hosted, built and run at home</div>
       <h1>My homelab: a small data centre at home</h1>
-      <p class="lede">A segmented network, one hypervisor running twenty containers, a single RTX&nbsp;3090 shared by AI, media and game streaming, ZFS storage with nightly backups, and a self-hosted AI agent I locked down to least privilege. This page is served from the lab itself.</p>
+      <p class="lede">A segmented network, one hypervisor running twenty-two containers, a single RTX&nbsp;3090 shared by AI, media and game streaming, ZFS storage with nightly backups, and a self-hosted AI agent I locked down to least privilege. This page is served from the lab itself.</p>
       <div class="tags">
         <span class="tag">Proxmox VE</span><span class="tag">LXC / KVM</span><span class="tag">TrueNAS SCALE · ZFS</span><span class="tag">Proxmox Backup Server</span><span class="tag">VLANs · Firewalls · IPS</span><span class="tag">Cloudflare Tunnel</span><span class="tag">Docker</span><span class="tag">NVIDIA / CUDA</span><span class="tag">Ollama · local LLMs</span><span class="tag">systemd</span><span class="tag">Bash · Python</span>
       </div>
       <div class="stats">
-        <div class="stat"><b>20 + 2</b><span>containers + VMs</span></div>
+        <div class="stat"><b>22 + 2</b><span>containers + VMs</span></div>
         <div class="stat"><b>5</b><span>network zones (VLANs)</span></div>
         <div class="stat"><b>1 GPU</b><span>shared by 5 workloads</span></div>
         <div class="stat"><b>27 TB</b><span>raw ZFS storage</span></div>
@@ -436,7 +443,7 @@ footer .wrap { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space
   };
 
   var HOSTS = [
-    { id: "pve", name: "Proxmox VE host", d: "20 containers + AI agent VM · RTX 3090", span: 1,
+    { id: "pve", name: "Proxmox VE host", d: "22 containers + AI agent VM · RTX 3090", span: 1,
       title: "Proxmox VE hypervisor", body: "Runs almost everything, as lightweight LXC containers plus one VM for the AI agent.",
       points: ["One RTX 3090 passed through to five containers at once (AI, two media servers, gaming, vision)", "NVIDIA driver pinned to the same version on host and every GPU guest", "Containers with a second network leg never take a default route from it"] },
     { id: "nas", name: "TrueNAS SCALE", d: "ZFS storage",

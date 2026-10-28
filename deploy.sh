@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copy site/index.html into the web container through the Proxmox host, then check it serves.
+# Copy the files in site/ into the web container through the Proxmox host, then check it serves.
 # Settings come from config.env next to this script (copy config.example.env; it is gitignored).
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -11,8 +11,11 @@ SCP=${SCP:-scp}
 : "${PVE_HOST:?}" "${SITE_CT:?}"
 SITE_ROOT=${SITE_ROOT:-/var/www/homelab}
 
-"$SCP" -o BatchMode=yes site/index.html "$PVE_HOST:/tmp/homelab-site-index.html"
-"$SSH" -o BatchMode=yes "$PVE_HOST" "pct push $SITE_CT /tmp/homelab-site-index.html $SITE_ROOT/index.html --perms 644 && rm -f /tmp/homelab-site-index.html"
+# Every file in site/ (index.html, og.png, ...). stats.json is pushed by the host's timer, not from here.
+FILES=(site/*)
+"$SSH" -o BatchMode=yes "$PVE_HOST" "mkdir -p /tmp/homelab-site-deploy"
+"$SCP" -o BatchMode=yes "${FILES[@]}" "$PVE_HOST:/tmp/homelab-site-deploy/"
+"$SSH" -o BatchMode=yes "$PVE_HOST" "cd /tmp/homelab-site-deploy && for f in *; do pct push $SITE_CT \"\$f\" \"$SITE_ROOT/\$f\" --perms 644 || exit 1; done; cd / && rm -rf /tmp/homelab-site-deploy"
 
 if [ -n "${CHECK_CT:-}" ] && [ -n "${SITE_URL_INTERNAL:-}" ]; then
   "$SSH" -o BatchMode=yes "$PVE_HOST" \
